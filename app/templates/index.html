@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Video Downloader</title>
+    <style>
+        body { font-family: sans-serif; background-color: #f4f4f9; color: #333; margin: 2em; }
+        .container { max-width: 800px; margin: auto; background: #fff; padding: 2em; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #5c67f2; }
+        input[type="url"], textarea { width: 95%; padding: 10px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 4px; }
+        textarea { height: 100px; }
+        button { background-color: #5c67f2; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background-color: #4a54c4; }
+        .loader { display: none; margin: 1em 0; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Insira o Link do Vídeo</h1>
+        <form action="/fetch" method="post" id="urlForm">
+            <input type="url" id="url" name="url" placeholder="https://www.youtube.com/watch?v=..." required>
+            <br>
+            <label for="cookies">Credenciais (Cookies - Opcional)</label><br>
+            <textarea id="cookies" name="cookies" placeholder="Cole o conteúdo do seu arquivo de cookies aqui (necessário para posts privados)"></textarea>
+            <br>
+            <button type="submit">Buscar Opções de Download</button>
+        </form>
+        <div class="loader" id="loader">Buscando informações, por favor aguarde...</div>
+        <div class="error" id="error-message"></div>
+    </div>
+
+    <script>
+        document.getElementById('urlForm').addEventListener('submit', function() {
+            document.getElementById('loader').style.display = 'block';
+            document.getElementById('error-message').innerText = '';
+        });
+    </script>
+</body>
+</html>

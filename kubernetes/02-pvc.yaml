@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: video-downloader-pvc
+  namespace: video-downloader
+spec:
+  # Usa o storage class que você especificou.
+  storageClassName: local-path
+  accessModes:
+    # ReadWriteOnce significa que o volume pode ser montado como leitura/escrita por um único nó.
+    - ReadWriteOnce
+  resources:
+    requests:
+      # Solicita 5GiB de espaço. Ajuste conforme sua necessidade.
+      storage: 5Gi

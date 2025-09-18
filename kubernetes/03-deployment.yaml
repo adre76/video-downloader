@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: video-downloader-deployment
+  namespace: video-downloader
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: video-downloader
+  template:
+    metadata:
+      labels:
+        app: video-downloader
+    spec:
+      containers:
+      - name: downloader-app
+        # A imagem que você enviou para o Docker Hub.
+        image: andrepereira21/downloader:latest
+        imagePullPolicy: Always # Sempre busca a imagem mais recente
+        ports:
+        - containerPort: 8000
+        volumeMounts:
+        - name: download-storage
+          # Monta o volume no diretório que a aplicação Flask espera.
+          mountPath: /app/downloads
+        resources:
+          requests:
+            cpu: "100m" # 0.1 CPU
+            memory: "128Mi" # 128 Mebibytes
+          limits:
+            cpu: "500m" # 0.5 CPU
+            memory: "512Mi"
+      volumes:
+      - name: download-storage
+        # Vincula este volume à PVC que criamos anteriormente.
+        persistentVolumeClaim:
+          claimName: video-downloader-pvc
