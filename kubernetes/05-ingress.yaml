@@ -4,21 +4,20 @@ metadata:
   name: video-downloader-ingress
   namespace: video-downloader
   annotations:
-    # Anotação para desabilitar o redirecionamento para HTTPS, útil para ambiente local.
+    # Anotação para desabilitar o redirecionamento para HTTPS.
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    # Nova anotação para permitir requisições de até 8 megabytes.
+    nginx.ingress.kubernetes.io/proxy-body-size: "8m"
 spec:
-  # Importante: O nome do IngressClassName deve ser o mesmo usado no seu cluster.
   ingressClassName: nginx
   rules:
-  - host: "downloader.local" # O endereço que você usará no navegador.
+  - host: "downloader.local"
     http:
       paths:
       - path: /
         pathType: Prefix
         backend:
           service:
-            # Aponta para o nosso serviço criado no passo anterior.
             name: video-downloader-service
             port:
-              # A porta definida no serviço (port: 80).
               number: 80
