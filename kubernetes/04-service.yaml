@@ -4,17 +4,14 @@ metadata:
   name: video-downloader-service
   namespace: video-downloader
 spec:
-  # NodePort expõe o serviço em uma porta estática em cada nó do cluster.
-  type: NodePort
+  # Alterado de NodePort para ClusterIP. Este é o padrão, mas é bom ser explícito.
+  type: ClusterIP
   selector:
     # Seleciona os pods gerenciados pelo nosso deployment.
     app: video-downloader
   ports:
   - protocol: TCP
-    # A porta dentro do cluster.
+    # A porta que o Ingress irá usar para se comunicar com este serviço.
     port: 80
     # A porta que o nosso contêiner está escutando.
     targetPort: 8000
-    # O Kubernetes alocará uma porta aleatória entre 30000-32767.
-    # Você pode especificar uma aqui se quiser, mas é melhor deixar em branco.
-    # nodePort: 30007
