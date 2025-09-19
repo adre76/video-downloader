@@ -12,4 +12,4 @@ spec:
   resources:
     requests:
       # Solicita 5GiB de espaço. Ajuste conforme sua necessidade.
-      storage: 5Gi
+      storage: 3Gi

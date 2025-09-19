@@ -1,44 +1,49 @@
+
 #!/bin/bash
 
-# Define o namespace para facilitar
+# Interrompe o script se qualquer comando falhar
+set -e
+
+# --- Variáveis ---
 NAMESPACE="video-downloader"
 
 # --- Início do Script ---
 echo "🚀 Iniciando o deploy do Video Downloader..."
 
-# Passo 1: Criar o Namespace
+# 1. Cria o Namespace para organizar os recursos.
 echo "1. Criando o namespace '$NAMESPACE'..."
 kubectl apply -f kubernetes/01-namespace.yaml
 
-# Aguarda um momento para o namespace ser totalmente provisionado
-sleep 2
-
-# Passo 2: Criar o PersistentVolumeClaim (PVC)
+# 2. Cria a Solicitação de Volume Persistente (PVC).
+#    O PVC ficará no estado 'Pending' até que um Pod o solicite.
 echo "2. Criando o PersistentVolumeClaim (PVC)..."
 kubectl apply -f kubernetes/02-pvc.yaml
 
-# Aguarda o PVC ser vinculado ('Bound') a um volume.
-# Este é um passo crucial para evitar que o Pod falhe ao tentar montar um volume que não está pronto.
+# 3. Cria o Deployment. A criação do Pod irá acionar o provisionamento do PVC.
+echo "3. Criando o Deployment (isso irá acionar o binding do PVC)..."
+kubectl apply -f kubernetes/03-deployment.yaml
+
+# 4. Cria o Serviço para expor o Deployment.
+echo "4. Criando o Serviço (Service)..."
+kubectl apply -f kubernetes/04-service.yaml
+
+# --- Verificações e Espera ---
+
+# 5. Aguarda o PVC ser vinculado ('Bound'). Agora isso deve funcionar, pois o Pod do Deployment o solicitou.
 echo "   Aguardando o PVC 'video-downloader-pvc' ser vinculado (Bound)..."
-kubectl wait --for=condition=Bound pvc/video-downloader-pvc -n $NAMESPACE --timeout=120s
+kubectl wait --for=condition=Bound pvc/video-downloader-pvc -n $NAMESPACE --timeout=180s
 if [ $? -ne 0 ]; then
-  echo "❌ Erro: O PVC não foi vinculado a tempo. Verifique a configuração do seu StorageClass 'local-path'."
+  echo "❌ Erro: O PVC não foi vinculado a tempo. Verifique os eventos do PVC com 'kubectl describe pvc ...'."
   exit 1
 fi
 echo "   ✅ PVC vinculado com sucesso!"
 
-# Passo 3: Criar o Deployment
-echo "3. Criando o Deployment..."
-kubectl apply -f kubernetes/03-deployment.yaml
+# 6. Aguarda o Deployment ficar totalmente disponível (pods rodando e prontos).
+echo "   Aguardando o Deployment ficar disponível..."
+kubectl wait --for=condition=available deployment/video-downloader-deployment -n $NAMESPACE --timeout=300s
+echo "   ✅ Deployment disponível!"
 
-# Passo 4: Criar o Serviço (Service)
-echo "4. Criando o Serviço (Service) para expor a aplicação..."
-kubectl apply -f kubernetes/04-service.yaml
-
-# Aguarda o deployment ficar pronto
-echo "   Aguardando o deployment ficar disponível..."
-kubectl wait --for=condition=available deployment/video-downloader-deployment -n $NAMESPACE --timeout=180s
-
+echo ""
 echo "✅ Deploy concluído com sucesso!"
 echo "--------------------------------------------------"
 
@@ -46,8 +51,8 @@ echo "--------------------------------------------------"
 echo "🔍 Buscando informações de acesso..."
 
 # Pega o IP de um dos nós do cluster.
-# Em um ambiente de produção, você usaria um Ingress ou LoadBalancer.
 NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+
 # Pega a porta NodePort alocada pelo serviço.
 NODE_PORT=$(kubectl get svc video-downloader-service -n $NAMESPACE -o jsonpath='{.spec.ports[0].nodePort}')
 
