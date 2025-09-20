@@ -2,6 +2,7 @@ import os
 import uuid
 import json
 import yt_dlp
+import traceback # Importamos a biblioteca de traceback
 from flask import Flask, request, render_template, send_from_directory, jsonify
 
 # --- Configuração ---
@@ -94,13 +95,11 @@ def download_video():
             ydl_opts['cookiefile'] = cookie_file
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # --- MUDANÇA CRÍTICA AQUI ---
-            # Em vez de apenas baixar, usamos extract_info que retorna os metadados
-            # do arquivo baixado, incluindo seu nome de arquivo final e real.
             info = ydl.extract_info(video_url, download=True)
-            # Pegamos o caminho real do arquivo do disco.
-            final_filepath = info.get('filepath', os.path.join(app.config['DOWNLOAD_FOLDER'], filename))
-
+            # A chave correta para o caminho do arquivo após o download é 'requested_downloads'
+            # que é uma lista. Pegamos o primeiro item.
+            downloaded_file = info.get('requested_downloads')[0]
+            final_filepath = downloaded_file.get('filepath')
 
         if final_filepath and os.path.exists(final_filepath):
             final_filename = os.path.basename(final_filepath)
@@ -109,19 +108,22 @@ def download_video():
             raise FileNotFoundError("O arquivo final não foi encontrado após o download pelo yt-dlp.")
 
     except Exception as e:
-        print(f"Erro no download: {e}")
+        # --- LOG DETALHADO ADICIONADO AQUI ---
+        tb_str = traceback.format_exc()
+        print(f"--- ERRO DETALHADO NO DOWNLOAD ---")
+        print(f"Exceção: {e}")
+        print(f"Traceback:\n{tb_str}")
+        print(f"------------------------------------")
         return "Ocorreu um erro durante o download.", 500
     finally:
-        # A lógica de limpeza agora usa o caminho final real, se ele existir.
         if final_filepath and os.path.exists(final_filepath):
             os.remove(final_filepath)
-
-        # Limpeza extra para arquivos temporários que possam ter sobrado
+        
         temp_files = [f for f in os.listdir(app.config['DOWNLOAD_FOLDER']) if f.startswith(filename_base)]
         for temp_file in temp_files:
             try:
                 os.remove(os.path.join(app.config['DOWNLOAD_FOLDER'], temp_file))
-            except OSError: pass # Ignora erros se o arquivo já foi removido
+            except OSError: pass 
         
         if cookie_file and os.path.exists(cookie_file):
             os.remove(cookie_file)
