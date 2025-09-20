@@ -10,64 +10,108 @@
         input[type="url"], textarea { width: 95%; padding: 10px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 4px; }
         button { background-color: #5c67f2; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; }
         button:disabled { background-color: #ccc; }
-        #log-container { margin-top: 20px; background-color: #222; color: #0f0; font-family: monospace; padding: 15px; border-radius: 4px; white-space: pre-wrap; word-wrap: break-word; height: 300px; overflow-y: scroll; display: none; }
+        #results-container { margin-top: 20px; }
+        .error { color: #d9534f; background-color: #f2dede; border: 1px solid #ebccd1; padding: 15px; border-radius: 4px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 1em; }
+        th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
+        .download-btn { background-color: #28a745; }
+        .mp3-btn { background-color: #ff8c00; }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Insira o Link do Vídeo</h1>
         <form id="urlForm">
-            <input type="url" id="url" name="url" placeholder="https://www.youtube.com/watch?v=..." required>
+            <input type="url" id="url" name="url" placeholder="https://www.instagram.com/reel/..." required>
             <br>
             <label for="cookies">Credenciais (Cookies - Opcional)</label><br>
-            <textarea id="cookies" name="cookies" placeholder="Cole o conteúdo do seu arquivo de cookies aqui (necessário para posts privados)"></textarea>
+            <textarea id="cookies" name="cookies" placeholder="Cole o conteúdo do seu arquivo de cookies (formato Netscape)"></textarea>
             <br>
             <button type="submit" id="submitBtn">Buscar Opções de Download</button>
         </form>
-        <div id="log-container"></div>
+        <div id="results-container"></div>
     </div>
 
     <script>
-        document.getElementById('urlForm').addEventListener('submit', function(event) {
-            event.preventDefault(); // Impede o envio tradicional do formulário
+        document.getElementById('urlForm').addEventListener('submit', async function(event) {
+            event.preventDefault();
             
-            const form = event.target;
-            const formData = new FormData(form);
             const submitBtn = document.getElementById('submitBtn');
-            const logContainer = document.getElementById('log-container');
+            const resultsContainer = document.getElementById('results-container');
+            const formData = new FormData(event.target);
 
-            // Feedback visual
             submitBtn.disabled = true;
             submitBtn.innerText = 'Buscando...';
-            logContainer.style.display = 'block';
-            logContainer.innerHTML = 'Iniciando processo... Por favor, aguarde.\n';
+            resultsContainer.innerHTML = '<p>Buscando informações, isso pode levar um momento...</p>';
 
-            // Conecta ao stream de eventos do servidor
-            const eventSource = new EventSource('/stream-fetch', {
-                method: 'POST',
-                body: formData
-            });
+            try {
+                const response = await fetch('/fetch', {
+                    method: 'POST',
+                    body: formData
+                });
 
-            eventSource.onmessage = function(e) {
-                if (e.data === 'PROCESSO_CONCLUIDO') {
-                    logContainer.innerHTML += '\n--- Processo Concluído ---';
-                    eventSource.close();
-                    submitBtn.disabled = false;
-                    submitBtn.innerText = 'Buscar Opções de Download';
-                } else {
-                    logContainer.innerHTML += e.data + '\n';
-                    logContainer.scrollTop = logContainer.scrollHeight; // Auto-scroll
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `Erro do servidor: ${response.status}`);
                 }
-            };
 
-            eventSource.onerror = function(err) {
-                logContainer.innerHTML += '\n--- Erro na conexão com o servidor. ---';
-                console.error("EventSource failed:", err);
-                eventSource.close();
+                const data = await response.json();
+                displayResults(data);
+
+            } catch (error) {
+                resultsContainer.innerHTML = `<div class="error"><strong>Falha na busca:</strong> ${error.message}</div>`;
+            } finally {
                 submitBtn.disabled = false;
                 submitBtn.innerText = 'Buscar Opções de Download';
-            };
+            }
         });
+
+        function displayResults(data) {
+            const resultsContainer = document.getElementById('results-container');
+            
+            let tableRows = '';
+            data.formats.forEach(format => {
+                tableRows += `
+                    <tr>
+                        <td>${format.note}</td>
+                        <td>.${format.ext}</td>
+                        <td>
+                            <form action="/download" method="post" target="_blank">
+                                <input type="hidden" name="url" value="${data.url}">
+                                <input type="hidden" name="format_id" value="${format.format_id}">
+                                <input type="hidden" name="cookies" value="${data.cookies_data}">
+                                <input type="hidden" name="filename" value="${data.filename}.${format.ext}">
+                                <button type="submit" class="download-btn">Download</button>
+                            </form>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            resultsContainer.innerHTML = `
+                <h2>Opções para: ${data.title}</h2>
+                <p><strong>Plataforma:</strong> ${data.platform}</p>
+                <form action="/download" method="post" target="_blank" style="margin-bottom: 1em;">
+                     <input type="hidden" name="url" value="${data.url}">
+                     <input type="hidden" name="format_id" value="mp3">
+                     <input type="hidden" name="cookies" value="${data.cookies_data}">
+                     <input type="hidden" name="filename" value="${data.filename}.mp3">
+                     <button type="submit" class="mp3-btn">Baixar apenas Áudio (MP3)</button>
+                </form>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Qualidade/Resolução</th>
+                            <th>Extensão</th>
+                            <th>Ação</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${tableRows}
+                    </tbody>
+                </table>
+            `;
+        }
     </script>
 </body>
 </html>
