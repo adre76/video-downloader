@@ -16,14 +16,15 @@ app = Flask(__name__)
 app.config['DOWNLOAD_FOLDER'] = DOWNLOAD_FOLDER
 app.secret_key = os.urandom(24)
 
-# Não usaremos mais um dicionário global para as tarefas.
+DOWNLOAD_TASKS = {}
 
 def sanitize_filename(title):
     sanitized = "".join([c for c in title if c.isalpha() or c.isdigit() or c in (' ', '-', '_')]).rstrip()
     return sanitized.replace(' ', '_')[:100]
 
 def get_video_info(url, cookies_data=None):
-    ydl_opts = {'quiet': True, 'no_warnings': True, 'skip_download': True}
+    # Adicionada opção para desabilitar o cache
+    ydl_opts = {'quiet': True, 'no_warnings': True, 'skip_download': True, 'cachedir': False}
     cookie_file = None
     if cookies_data:
         cookie_file = os.path.join(app.config['DOWNLOAD_FOLDER'], f'cookies_{uuid.uuid4()}.txt')
@@ -44,7 +45,6 @@ def index():
 
 @app.route('/fetch', methods=['POST'])
 def fetch_formats():
-    # ... (Esta função permanece exatamente a mesma da versão anterior) ...
     try:
         video_url = request.form.get('url')
         cookie_file_obj = request.files.get('cookieFile')
@@ -81,35 +81,25 @@ def fetch_formats():
         })
     except Exception as e:
         tb_str = traceback.format_exc()
-        print(f"--- ERRO DETALhado EM /FETCH ---\n{tb_str}------------------------------------")
+        print(f"--- ERRO DETALHADO EM /FETCH ---\n{tb_str}------------------------------------")
         return jsonify({'error': 'Ocorreu um erro interno no servidor.'}), 500
 
-
-# --- Lógica de Download em Background (Modificada para usar arquivos) ---
 def download_worker(task_id, ydl_opts, video_url):
-    status_file = os.path.join(DOWNLOAD_FOLDER, f"{task_id}.json")
-
-    def update_status(new_log_line=None, status=None, result=None):
-        with open(status_file, 'r+') as f:
-            data = json.load(f)
-            if new_log_line: data['log'].append(new_log_line)
-            if status: data['status'] = status
-            if result: data['result'] = result
-            f.seek(0)
-            json.dump(data, f)
-            f.truncate()
-
     def log_hook(d):
         if d['status'] == 'downloading':
             log_line = f"    Baixando: {d['_percent_str']} de {d['_total_bytes_str']} a {d['_speed_str']}"
-            update_status(new_log_line=log_line)
+            DOWNLOAD_TASKS[task_id]['log'].append(log_line)
         elif d['status'] == 'finished':
-            update_status(new_log_line="Download concluído, processando arquivo final...")
+            if 'total_bytes' in d:
+                DOWNLOAD_TASKS[task_id]['log'].append("Download da parte concluído, processando...")
+        elif d['status'] == 'processing' and 'Merger' in d.get('postprocessor'):
+             DOWNLOAD_TASKS[task_id]['log'].append("Juntando vídeo e áudio com ffmpeg...")
         elif d['status'] == 'error':
-             update_status(new_log_line=f"ERRO: {d.get('msg', 'Falha no download')}")
+             DOWNLOAD_TASKS[task_id]['log'].append(f"ERRO: {d.get('msg', 'Falha no download')}")
 
     ydl_opts['progress_hooks'] = [log_hook]
-    ydl_opts['quiet'] = True
+    ydl_opts['quiet'] = False
+    ydl_opts['cachedir'] = False # Adicionada opção para desabilitar o cache
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -119,23 +109,23 @@ def download_worker(task_id, ydl_opts, video_url):
             
             if final_filepath and os.path.exists(final_filepath):
                 final_filename = os.path.basename(final_filepath)
-                update_status(status='complete', result=final_filename)
+                DOWNLOAD_TASKS[task_id]['status'] = 'complete'
+                DOWNLOAD_TASKS[task_id]['result'] = final_filename
             else:
                 raise FileNotFoundError("Arquivo final não encontrado.")
     except Exception as e:
         tb_str = traceback.format_exc()
         error_log = f"ERRO: Falha no processo de download.\n{tb_str}"
-        update_status(new_log_line=error_log, status='error')
+        DOWNLOAD_TASKS[task_id]['log'].append(error_log)
+        DOWNLOAD_TASKS[task_id]['status'] = 'error'
 
 @app.route('/start-download', methods=['POST'])
 def start_download():
     task_id = str(uuid.uuid4())
     status_file = os.path.join(DOWNLOAD_FOLDER, f"{task_id}.json")
 
-    # Cria o arquivo de status inicial
     initial_status = {'status': 'running', 'log': ['Iniciando download...'], 'result': None}
-    with open(status_file, 'w') as f:
-        json.dump(initial_status, f)
+    with open(status_file, 'w') as f: json.dump(initial_status, f)
 
     video_url = request.form.get('url')
     format_id = request.form.get('format_id')
@@ -147,10 +137,11 @@ def start_download():
     
     ydl_opts = {}
     if format_id == 'mp3':
-        ydl_opts = {'format': 'bestaudio/best', 'outtmpl': output_path,
+        ydl_opts = {'format': 'bestaudio/best', 'outtmpl': output_path + '.%(ext)s',
                     'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}]}
     else:
-        ydl_opts = {'format': f'{format_id}+bestaudio/best', 'outtmpl': output_path, 'merge_output_format': 'mp4'}
+        ydl_opts = {'format': f'{format_id}+bestaudio/best', 'outtmpl': output_path + '.%(ext)s',
+                    'merge_output_format': 'mp4'}
 
     if cookie_file_obj and cookie_file_obj.filename != '':
         cookies_data = cookie_file_obj.read().decode('utf-8')
@@ -168,8 +159,6 @@ def start_download():
 def download_stream(task_id):
     def generate():
         status_file = os.path.join(DOWNLOAD_FOLDER, f"{task_id}.json")
-        
-        # Espera o arquivo de status ser criado
         retries = 5
         while not os.path.exists(status_file) and retries > 0:
             time.sleep(0.2)
