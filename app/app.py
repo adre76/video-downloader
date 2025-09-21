@@ -16,6 +16,8 @@ app = Flask(__name__)
 app.config['DOWNLOAD_FOLDER'] = DOWNLOAD_FOLDER
 app.secret_key = os.urandom(24)
 
+DOWNLOAD_TASKS = {}
+
 def sanitize_filename(title):
     sanitized = "".join([c for c in title if c.isalpha() or c.isdigit() or c in (' ', '-', '_')]).rstrip()
     return sanitized.replace(' ', '_')[:100]
@@ -85,7 +87,6 @@ def download_worker(task_id, ydl_opts, video_url):
     status_file = os.path.join(DOWNLOAD_FOLDER, f"{task_id}.json")
 
     def update_status_file(new_log_line=None, status=None, result=None):
-        # Esta função agora lê, atualiza e escreve o arquivo de status de forma segura
         try:
             with open(status_file, 'r+') as f:
                 data = json.load(f)
@@ -151,8 +152,13 @@ def start_download():
         ydl_opts = {'format': 'bestaudio/best', 'outtmpl': output_path + '.%(ext)s',
                     'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}]}
     else:
-        ydl_opts = {'format': f'{format_id}+bestaudio/best', 'outtmpl': output_path + '.%(ext)s',
-                    'merge_output_format': 'mp4'}
+        # --- MUDANÇA PRINCIPAL AQUI ---
+        # Instruímos o yt-dlp a preferir um áudio no container m4a (que usa o codec AAC)
+        ydl_opts = {
+            'format': f"{format_id}+bestaudio[ext=m4a]/{format_id}+bestaudio/best",
+            'outtmpl': output_path + '.%(ext)s',
+            'merge_output_format': 'mp4'
+        }
 
     if cookie_file_obj and cookie_file_obj.filename != '':
         cookies_data = cookie_file_obj.read().decode('utf-8')
