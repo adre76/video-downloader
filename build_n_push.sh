@@ -21,9 +21,9 @@ echo "=> Atualizando o repositório local..."
 git pull origin main
 
 echo "=> Construindo a imagem Docker: ${FULL_IMAGE_NAME}"
-docker build -t "${FULL_IMAGE_NAME}" .
+sudo docker build -t "${FULL_IMAGE_NAME}" .
 
 echo "=> Publicando a imagem no Docker Hub..."
-docker push "${FULL_IMAGE_NAME}"
+sudo docker push "${FULL_IMAGE_NAME}"
 
 echo "✅ Imagem construída e publicada com sucesso!"
