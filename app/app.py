@@ -8,24 +8,38 @@ import time
 from flask import Flask, request, render_template, send_from_directory, jsonify, Response, stream_with_context, after_this_request
 
 # --- Configuração ---
+# Define a pasta onde os arquivos temporários (vídeos, cookies, status) serão salvos.
+# Este caminho é montado a partir de um Persistent Volume no Kubernetes.
 DOWNLOAD_FOLDER = '/app/downloads'
 if not os.path.exists(DOWNLOAD_FOLDER):
     os.makedirs(DOWNLOAD_FOLDER)
 
+# Inicializa a aplicação Flask.
 app = Flask(__name__)
 app.config['DOWNLOAD_FOLDER'] = DOWNLOAD_FOLDER
 app.secret_key = os.urandom(24)
 
-DOWNLOAD_TASKS = {}
+# --- Funções Auxiliares ---
 
 def sanitize_filename(title):
+    """
+    Limpa uma string de título para criar um nome de arquivo seguro,
+    removendo caracteres inválidos e limitando o comprimento.
+    """
     sanitized = "".join([c for c in title if c.isalpha() or c.isdigit() or c in (' ', '-', '_')]).rstrip()
     return sanitized.replace(' ', '_')[:100]
 
 def get_video_info(url, cookies_data=None):
+    """
+    Usa a biblioteca yt-dlp para extrair metadados de um vídeo (título, formatos, etc.)
+    sem baixar o vídeo em si.
+    - url: A URL do vídeo a ser analisada.
+    - cookies_data: O conteúdo de um arquivo de cookies (formato Netscape) para autenticação.
+    """
     ydl_opts = {'quiet': True, 'no_warnings': True, 'skip_download': True, 'cachedir': False}
     cookie_file = None
     if cookies_data:
+        # Cria um arquivo de cookie temporário para o yt-dlp usar
         cookie_file = os.path.join(app.config['DOWNLOAD_FOLDER'], f'cookies_{uuid.uuid4()}.txt')
         with open(cookie_file, 'w', encoding='utf-8') as f: f.write(cookies_data)
         ydl_opts['cookiefile'] = cookie_file
@@ -33,17 +47,29 @@ def get_video_info(url, cookies_data=None):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             return ydl.extract_info(url, download=False)
     except Exception as e:
+        # Em caso de erro, retorna um dicionário com a mensagem de erro
         return {'error': str(e)}
     finally:
+        # Garante que o arquivo de cookie temporário seja sempre deletado
         if cookie_file and os.path.exists(cookie_file): os.remove(cookie_file)
 
-# --- Rotas da Aplicação ---
+# --- Rotas da Aplicação (Endpoints) ---
+
+# Rota principal: serve a página inicial da aplicação.
 @app.route('/')
 def index():
+    """Renderiza a interface principal do usuário (o arquivo index.html)."""
     return render_template('index.html')
 
+# Rota para buscar os formatos de download disponíveis.
 @app.route('/fetch', methods=['POST'])
 def fetch_formats():
+    """
+    Endpoint chamado via AJAX pelo frontend.
+    Recebe a URL do vídeo e o arquivo de cookies, busca as informações
+    e retorna uma lista de formatos de download em JSON.
+    Também filtra os formatos para remover opções duplicadas.
+    """
     try:
         video_url = request.form.get('url')
         cookie_file_obj = request.files.get('cookieFile')
@@ -60,7 +86,7 @@ def fetch_formats():
             return jsonify({'error': error_message}), 500
 
         formats = []
-        unique_formats = set()
+        unique_formats = set() # Usado para remover duplicatas visuais
         for f in info.get('formats', []):
             if f.get('url') and (f.get('vcodec') != 'none' or f.get('acodec') != 'none'):
                 format_note = f.get('format_note', f.get('resolution', 'Áudio'))
@@ -83,10 +109,17 @@ def fetch_formats():
         print(f"--- ERRO DETALHADO EM /FETCH ---\n{tb_str}------------------------------------")
         return jsonify({'error': 'Ocorreu um erro interno no servidor.'}), 500
 
+# Função que executa o download em uma thread separada.
 def download_worker(task_id, ydl_opts, video_url):
+    """
+    Esta função é o "trabalhador" que executa o demorado processo de download do yt-dlp.
+    Ela é iniciada em uma thread separada para não travar a aplicação principal.
+    Atualiza um arquivo de status (.json) com o progresso e o resultado.
+    """
     status_file = os.path.join(DOWNLOAD_FOLDER, f"{task_id}.json")
 
     def update_status_file(new_log_line=None, status=None, result=None):
+        """Função auxiliar para escrever no arquivo de status da tarefa de forma segura."""
         try:
             with open(status_file, 'r+') as f:
                 data = json.load(f)
@@ -100,6 +133,7 @@ def download_worker(task_id, ydl_opts, video_url):
             print(f"Erro ao atualizar o arquivo de status para a tarefa {task_id}: {e}")
 
     def log_hook(d):
+        """Hook do yt-dlp para capturar e registrar o progresso do download no arquivo de status."""
         if d['status'] == 'downloading':
             log_line = f"    Baixando: {d['_percent_str']} de {d['_total_bytes_str']} a {d['_speed_str']}"
             update_status_file(new_log_line=log_line)
@@ -131,8 +165,14 @@ def download_worker(task_id, ydl_opts, video_url):
         error_log = f"ERRO: Falha no processo de download.\n{tb_str}"
         update_status_file(new_log_line=error_log, status='error')
 
+# Rota para iniciar um download.
 @app.route('/start-download', methods=['POST'])
 def start_download():
+    """
+    Endpoint chamado pelo frontend para iniciar um download.
+    Ele cria um ID de tarefa único, cria um arquivo de status, inicia a função
+    'download_worker' em uma thread separada e retorna imediatamente o ID da tarefa para o cliente.
+    """
     task_id = str(uuid.uuid4())
     status_file = os.path.join(DOWNLOAD_FOLDER, f"{task_id}.json")
 
@@ -152,13 +192,8 @@ def start_download():
         ydl_opts = {'format': 'bestaudio/best', 'outtmpl': output_path + '.%(ext)s',
                     'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}]}
     else:
-        # --- MUDANÇA PRINCIPAL AQUI ---
-        # Instruímos o yt-dlp a preferir um áudio no container m4a (que usa o codec AAC)
-        ydl_opts = {
-            'format': f"{format_id}+bestaudio[ext=m4a]/{format_id}+bestaudio/best",
-            'outtmpl': output_path + '.%(ext)s',
-            'merge_output_format': 'mp4'
-        }
+        ydl_opts = {'format': f'{format_id}+bestaudio[ext=m4a]/{format_id}+bestaudio/best',
+                    'outtmpl': output_path + '.%(ext)s', 'merge_output_format': 'mp4'}
 
     if cookie_file_obj and cookie_file_obj.filename != '':
         cookies_data = cookie_file_obj.read().decode('utf-8')
@@ -172,8 +207,14 @@ def start_download():
     
     return jsonify({'task_id': task_id})
 
+# Rota para transmitir o log de progresso.
 @app.route('/download-stream/<task_id>')
 def download_stream(task_id):
+    """
+    Endpoint de Server-Sent Events (SSE). O frontend se conecta a esta rota
+    após iniciar um download. A função lê o arquivo de status da tarefa em loop
+    e envia (stream) cada nova linha de log para o navegador em tempo real.
+    """
     def generate():
         status_file = os.path.join(DOWNLOAD_FOLDER, f"{task_id}.json")
         retries = 5
@@ -188,8 +229,7 @@ def download_stream(task_id):
         last_index = 0
         while True:
             try:
-                with open(status_file, 'r') as f:
-                    task = json.load(f)
+                with open(status_file, 'r') as f: task = json.load(f)
             except (IOError, json.JSONDecodeError):
                 time.sleep(0.5)
                 continue
@@ -208,8 +248,14 @@ def download_stream(task_id):
             time.sleep(0.5)
     return Response(stream_with_context(generate()), content_type='text/event-stream')
 
+# Rota para servir o arquivo finalizado.
 @app.route('/get-file/<task_id>/<filename>')
 def get_file(task_id, filename):
+    """
+    Endpoint final que serve o arquivo baixado para o usuário.
+    Após o envio do arquivo ser concluído, ele também é responsável por
+    limpar todos os arquivos temporários associados à tarefa (vídeo, cookie, status).
+    """
     file_path = os.path.join(app.config['DOWNLOAD_FOLDER'], filename)
     
     @after_this_request
@@ -222,11 +268,16 @@ def get_file(task_id, filename):
 
             status_file = os.path.join(DOWNLOAD_FOLDER, f"{task_id}.json")
             if os.path.exists(status_file): os.remove(status_file)
-
         except Exception as e:
             print(f"Erro na limpeza da tarefa {task_id}: {e}")
         return response
     return send_from_directory(app.config['DOWNLOAD_FOLDER'], filename, as_attachment=True)
     
+# Bloco para execução local (não usado pelo Gunicorn)
 if __name__ == '__main__':
+    """
+    Permite rodar a aplicação com 'python app.py' para testes locais.
+    O 'threaded=True' é importante para que as tarefas em background funcionem
+    no servidor de desenvolvimento do Flask.
+    """
     app.run(debug=True, host='0.0.0.0', port=5000, threaded=True)
