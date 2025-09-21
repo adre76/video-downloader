@@ -16,7 +16,7 @@ app = Flask(__name__)
 app.config['DOWNLOAD_FOLDER'] = DOWNLOAD_FOLDER
 app.secret_key = os.urandom(24)
 
-DOWNLOAD_TASKS = {}
+# Não usaremos mais um dicionário global para as tarefas.
 
 def sanitize_filename(title):
     sanitized = "".join([c for c in title if c.isalpha() or c.isdigit() or c in (' ', '-', '_')]).rstrip()
@@ -44,6 +44,7 @@ def index():
 
 @app.route('/fetch', methods=['POST'])
 def fetch_formats():
+    # ... (Esta função permanece exatamente a mesma da versão anterior) ...
     try:
         video_url = request.form.get('url')
         cookie_file_obj = request.files.get('cookieFile')
@@ -80,18 +81,32 @@ def fetch_formats():
         })
     except Exception as e:
         tb_str = traceback.format_exc()
-        print(f"--- ERRO DETALHADO EM /FETCH ---\n{tb_str}------------------------------------")
+        print(f"--- ERRO DETALhado EM /FETCH ---\n{tb_str}------------------------------------")
         return jsonify({'error': 'Ocorreu um erro interno no servidor.'}), 500
 
+
+# --- Lógica de Download em Background (Modificada para usar arquivos) ---
 def download_worker(task_id, ydl_opts, video_url):
+    status_file = os.path.join(DOWNLOAD_FOLDER, f"{task_id}.json")
+
+    def update_status(new_log_line=None, status=None, result=None):
+        with open(status_file, 'r+') as f:
+            data = json.load(f)
+            if new_log_line: data['log'].append(new_log_line)
+            if status: data['status'] = status
+            if result: data['result'] = result
+            f.seek(0)
+            json.dump(data, f)
+            f.truncate()
+
     def log_hook(d):
         if d['status'] == 'downloading':
             log_line = f"    Baixando: {d['_percent_str']} de {d['_total_bytes_str']} a {d['_speed_str']}"
-            DOWNLOAD_TASKS[task_id]['log'].append(log_line)
+            update_status(new_log_line=log_line)
         elif d['status'] == 'finished':
-            DOWNLOAD_TASKS[task_id]['log'].append("Download concluído, processando arquivo final...")
+            update_status(new_log_line="Download concluído, processando arquivo final...")
         elif d['status'] == 'error':
-             DOWNLOAD_TASKS[task_id]['log'].append(f"ERRO: {d.get('msg', 'Falha no download')}")
+             update_status(new_log_line=f"ERRO: {d.get('msg', 'Falha no download')}")
 
     ydl_opts['progress_hooks'] = [log_hook]
     ydl_opts['quiet'] = True
@@ -104,19 +119,24 @@ def download_worker(task_id, ydl_opts, video_url):
             
             if final_filepath and os.path.exists(final_filepath):
                 final_filename = os.path.basename(final_filepath)
-                DOWNLOAD_TASKS[task_id]['status'] = 'complete'
-                DOWNLOAD_TASKS[task_id]['result'] = final_filename
+                update_status(status='complete', result=final_filename)
             else:
                 raise FileNotFoundError("Arquivo final não encontrado.")
     except Exception as e:
         tb_str = traceback.format_exc()
         error_log = f"ERRO: Falha no processo de download.\n{tb_str}"
-        DOWNLOAD_TASKS[task_id]['log'].append(error_log)
-        DOWNLOAD_TASKS[task_id]['status'] = 'error'
+        update_status(new_log_line=error_log, status='error')
 
 @app.route('/start-download', methods=['POST'])
 def start_download():
     task_id = str(uuid.uuid4())
+    status_file = os.path.join(DOWNLOAD_FOLDER, f"{task_id}.json")
+
+    # Cria o arquivo de status inicial
+    initial_status = {'status': 'running', 'log': ['Iniciando download...'], 'result': None}
+    with open(status_file, 'w') as f:
+        json.dump(initial_status, f)
+
     video_url = request.form.get('url')
     format_id = request.form.get('format_id')
     filename = request.form.get('filename')
@@ -137,8 +157,6 @@ def start_download():
         cookie_file = os.path.join(app.config['DOWNLOAD_FOLDER'], f'cookies_{task_id}.txt')
         with open(cookie_file, 'w', encoding='utf-8') as f: f.write(cookies_data)
         ydl_opts['cookiefile'] = cookie_file
-
-    DOWNLOAD_TASKS[task_id] = {'status': 'running', 'log': ['Iniciando download...'], 'result': None}
     
     thread = threading.Thread(target=download_worker, args=(task_id, ydl_opts, video_url))
     thread.daemon = True
@@ -149,23 +167,23 @@ def start_download():
 @app.route('/download-stream/<task_id>')
 def download_stream(task_id):
     def generate():
-        # --- MUDANÇA PRINCIPAL AQUI ---
-        # Lógica de espera para evitar a condição de corrida
-        task = DOWNLOAD_TASKS.get(task_id)
+        status_file = os.path.join(DOWNLOAD_FOLDER, f"{task_id}.json")
+        
+        # Espera o arquivo de status ser criado
         retries = 5
-        while not task and retries > 0:
-            time.sleep(0.2) # Espera 200ms
-            task = DOWNLOAD_TASKS.get(task_id)
+        while not os.path.exists(status_file) and retries > 0:
+            time.sleep(0.2)
             retries -= 1
 
-        if not task:
+        if not os.path.exists(status_file):
             yield "data: ERRO: Tarefa não encontrada ou expirou.\n\n"
-            return # Sai da função geradora
-        # --- FIM DA MUDANÇA ---
+            return
 
         last_index = 0
         while True:
-            task = DOWNLOAD_TASKS[task_id] # Re-obtém o estado atual da tarefa
+            with open(status_file, 'r') as f:
+                task = json.load(f)
+
             if len(task['log']) > last_index:
                 for i in range(last_index, len(task['log'])):
                     yield f"data: {task['log'][i]}\n\n"
@@ -188,9 +206,13 @@ def get_file(task_id, filename):
     def cleanup(response):
         try:
             if os.path.exists(file_path): os.remove(file_path)
+            
             cookie_file = os.path.join(app.config['DOWNLOAD_FOLDER'], f'cookies_{task_id}.txt')
             if os.path.exists(cookie_file): os.remove(cookie_file)
-            if task_id in DOWNLOAD_TASKS: del DOWNLOAD_TASKS[task_id]
+
+            status_file = os.path.join(DOWNLOAD_FOLDER, f"{task_id}.json")
+            if os.path.exists(status_file): os.remove(status_file)
+
         except Exception as e:
             print(f"Erro na limpeza da tarefa {task_id}: {e}")
         return response
