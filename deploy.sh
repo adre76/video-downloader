@@ -34,17 +34,4 @@ echo
 echo "--------------------------------------------------"
 echo -e "${CYAN}🎉 APLICAÇÃO PRONTA PARA ACESSO 🎉${NC}"
 echo "--------------------------------------------------"
-echo "Para acessar a aplicação, você precisa mapear o host '$HOST' para o IP do seu Ingress Controller."
-echo
-echo "1. Encontre o IP do Ingress (geralmente o IP de um dos nós do seu cluster RKE2):"
-echo -e "   ${YELLOW}kubectl get nodes -o wide${NC}"
-echo
-echo "2. Edite seu arquivo 'hosts' no seu computador:"
-echo "   - Linux/Mac: /etc/hosts"
-echo "   - Windows: C:\\Windows\\System32\\drivers\\etc\\hosts"
-echo "   Adicione a linha: ${GREEN}<IP_DO_NÓ> $HOST${NC}"
-echo
-echo "3. Após salvar o arquivo hosts, acesse no seu navegador:"
-echo -e "   ➡️  ${GREEN}http://$HOST${NC}"
-echo "--------------------------------------------------"
 echo
