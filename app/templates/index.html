@@ -183,45 +183,38 @@
         async function startDownload(url, formatId, filename) {
             logContainer.style.display = 'block';
             logContainer.innerHTML = 'Iniciando download...<br>';
-            submitBtn.disabled = true;
+            document.querySelectorAll('button').forEach(b => b.disabled = true);
             
-            // Precisamos dos dados do formulário original para o arquivo de cookie
             const formData = new FormData(urlForm);
             formData.append('format_id', formatId);
             formData.append('filename', filename);
-            // O campo 'url' já está no formData, mas podemos garantir que é o correto
             formData.set('url', url);
 
-            // 1. Iniciar o processo de download no backend
             const startResponse = await fetch('/start-download', { method: 'POST', body: formData });
             const startData = await startResponse.json();
             const taskId = startData.task_id;
 
             if (!taskId) {
                 logContainer.innerHTML += '<span class="log-error">Falha ao iniciar a tarefa de download.</span>';
-                submitBtn.disabled = false;
+                document.querySelectorAll('button').forEach(b => b.disabled = false);
                 return;
             }
 
-            // 2. Conectar ao stream de logs
             const eventSource = new EventSource(`/download-stream/${taskId}`);
 
             eventSource.onmessage = function(e) {
                 const data = e.data;
                 if (data.startsWith('DOWNLOAD_URL:')) {
                     const downloadUrl = data.substring('DOWNLOAD_URL:'.length);
-                    logContainer.innerHTML += `<br><span class="log-success">Download concluído!</span><br><a href="${downloadUrl}" download>Clique aqui para baixar o arquivo.</a>`;
-                    window.location.href = downloadUrl; // Inicia o download automaticamente
+                    logContainer.innerHTML += `<br><span class="log-success">Download concluído!</span><br><a href="${downloadUrl}" download>Clique aqui para baixar o arquivo se o download não iniciar automaticamente.</a>`;
+                    window.location.href = downloadUrl;
                     eventSource.close();
-                    submitBtn.disabled = false;
-                } else if (data === 'PROCESSO_CONCLUIDO') {
-                    // Ignora, pois já tratamos o link de download
+                    document.querySelectorAll('button').forEach(b => b.disabled = false);
                 } else if (data.startsWith('ERRO:')) {
                     logContainer.innerHTML += `<span class="log-error">${data}</span><br>`;
                     eventSource.close();
-                    submitBtn.disabled = false;
-                }
-                else {
+                    document.querySelectorAll('button').forEach(b => b.disabled = false);
+                } else {
                     logContainer.innerHTML += data + '<br>';
                     logContainer.scrollTop = logContainer.scrollHeight;
                 }
@@ -230,7 +223,7 @@
             eventSource.onerror = function(err) {
                 logContainer.innerHTML += '<span class="log-error">--- Erro na conexão de log com o servidor. ---</span>';
                 eventSource.close();
-                submitBtn.disabled = false;
+                document.querySelectorAll('button').forEach(b => b.disabled = false);
             };
         }
     </script>
