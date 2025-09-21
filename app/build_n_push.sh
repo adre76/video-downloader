@@ -14,6 +14,12 @@ FULL_IMAGE_NAME="${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG}"
 echo "=> Fazendo login no Docker Hub..."
 #docker login #Login não necessário com Docker Desktop instalado
 
+echo "=> Removendo projeto antigo no Kubernetes (se existir)..."
+kubectl delete all --all -n video-downloader
+
+echo "=> Atualizando o repositório local..."
+git pull origin main
+
 echo "=> Construindo a imagem Docker: ${FULL_IMAGE_NAME}"
 docker build -t "${FULL_IMAGE_NAME}" .
 
