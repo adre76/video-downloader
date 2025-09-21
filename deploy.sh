@@ -14,7 +14,7 @@ HOST="downloader.local"
 
 # --- Execução ---
 echo # Linha em branco
-echo -e "${YELLOW}--- Passo 1: Aplicando manifestos do Kubernetes ---${NC}"
+echo -e "${YELLOW}=> Passo 1: Aplicando manifestos do Kubernetes ---${NC}"
 kubectl apply -f kubernetes/01-namespace.yaml
 kubectl apply -f kubernetes/02-pvc.yaml
 kubectl apply -f kubernetes/03-deployment.yaml
@@ -23,7 +23,7 @@ kubectl apply -f kubernetes/05-ingress.yaml
 echo -e "${GREEN}   Manifestos aplicados com sucesso.${NC}"
 echo # Linha em branco
 
-echo -e "${YELLOW}--- Passo 2: Aguardando o Deployment ficar disponível ---${NC}"
+echo -e "${YELLOW}=> Passo 2: Aguardando o Deployment ficar disponível ---${NC}"
 echo "   Isso pode levar alguns minutos enquanto a imagem do contêiner é baixada..."
 kubectl wait --for=condition=available deployment/video-downloader-deployment -n $NAMESPACE --timeout=300s
 echo
