@@ -21,21 +21,22 @@ FULL_IMAGE_NAME="${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG}"
 #docker login #Login não necessário com Docker Desktop instalado
 
 echo
-echo -e "${YELLOW}=> Removendo projeto antigo no Kubernetes (se existir)..."
+echo -e "${YELLOW}=> Removendo projeto antigo no Kubernetes (se existir)...${NC}"
 kubectl delete all --all -n video-downloader
 echo
 
-echo -e "${YELLOW}=> Atualizando o repositório local..."
+echo -e "${YELLOW}=> Atualizando o repositório local...${NC}"
 git pull origin main
 echo
 
-echo -e "${YELLOW}=> Construindo a imagem Docker: ${FULL_IMAGE_NAME}"
+echo -e "${YELLOW}=> Construindo a imagem Docker: ${FULL_IMAGE_NAME}${NC}"
 sudo docker build -t "${FULL_IMAGE_NAME}" .
 echo
 
 
-echo -e "${YELLOW}=> Publicando a imagem no Docker Hub..."
+echo -e "${YELLOW}=> Publicando a imagem no Docker Hub...${NC}"
 sudo docker push "${FULL_IMAGE_NAME}"
 echo
 
-echo -e "${GREEN}✅ Imagem construída e publicada com sucesso!"
+echo -e "${GREEN}✅ Imagem construída e publicada com sucesso!${NC}"
+echo
