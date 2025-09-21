@@ -16,14 +16,11 @@ app = Flask(__name__)
 app.config['DOWNLOAD_FOLDER'] = DOWNLOAD_FOLDER
 app.secret_key = os.urandom(24)
 
-DOWNLOAD_TASKS = {}
-
 def sanitize_filename(title):
     sanitized = "".join([c for c in title if c.isalpha() or c.isdigit() or c in (' ', '-', '_')]).rstrip()
     return sanitized.replace(' ', '_')[:100]
 
 def get_video_info(url, cookies_data=None):
-    # Adicionada opção para desabilitar o cache
     ydl_opts = {'quiet': True, 'no_warnings': True, 'skip_download': True, 'cachedir': False}
     cookie_file = None
     if cookies_data:
@@ -85,21 +82,37 @@ def fetch_formats():
         return jsonify({'error': 'Ocorreu um erro interno no servidor.'}), 500
 
 def download_worker(task_id, ydl_opts, video_url):
+    status_file = os.path.join(DOWNLOAD_FOLDER, f"{task_id}.json")
+
+    def update_status_file(new_log_line=None, status=None, result=None):
+        # Esta função agora lê, atualiza e escreve o arquivo de status de forma segura
+        try:
+            with open(status_file, 'r+') as f:
+                data = json.load(f)
+                if new_log_line: data['log'].append(new_log_line)
+                if status: data['status'] = status
+                if result: data['result'] = result
+                f.seek(0)
+                json.dump(data, f)
+                f.truncate()
+        except (IOError, json.JSONDecodeError) as e:
+            print(f"Erro ao atualizar o arquivo de status para a tarefa {task_id}: {e}")
+
     def log_hook(d):
         if d['status'] == 'downloading':
             log_line = f"    Baixando: {d['_percent_str']} de {d['_total_bytes_str']} a {d['_speed_str']}"
-            DOWNLOAD_TASKS[task_id]['log'].append(log_line)
+            update_status_file(new_log_line=log_line)
         elif d['status'] == 'finished':
             if 'total_bytes' in d:
-                DOWNLOAD_TASKS[task_id]['log'].append("Download da parte concluído, processando...")
+                update_status_file(new_log_line="Download da parte concluído, processando...")
         elif d['status'] == 'processing' and 'Merger' in d.get('postprocessor'):
-             DOWNLOAD_TASKS[task_id]['log'].append("Juntando vídeo e áudio com ffmpeg...")
+             update_status_file(new_log_line="Juntando vídeo e áudio com ffmpeg...")
         elif d['status'] == 'error':
-             DOWNLOAD_TASKS[task_id]['log'].append(f"ERRO: {d.get('msg', 'Falha no download')}")
+             update_status_file(new_log_line=f"ERRO: {d.get('msg', 'Falha no download')}")
 
     ydl_opts['progress_hooks'] = [log_hook]
     ydl_opts['quiet'] = False
-    ydl_opts['cachedir'] = False # Adicionada opção para desabilitar o cache
+    ydl_opts['cachedir'] = False
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -109,15 +122,13 @@ def download_worker(task_id, ydl_opts, video_url):
             
             if final_filepath and os.path.exists(final_filepath):
                 final_filename = os.path.basename(final_filepath)
-                DOWNLOAD_TASKS[task_id]['status'] = 'complete'
-                DOWNLOAD_TASKS[task_id]['result'] = final_filename
+                update_status_file(status='complete', result=final_filename)
             else:
                 raise FileNotFoundError("Arquivo final não encontrado.")
     except Exception as e:
         tb_str = traceback.format_exc()
         error_log = f"ERRO: Falha no processo de download.\n{tb_str}"
-        DOWNLOAD_TASKS[task_id]['log'].append(error_log)
-        DOWNLOAD_TASKS[task_id]['status'] = 'error'
+        update_status_file(new_log_line=error_log, status='error')
 
 @app.route('/start-download', methods=['POST'])
 def start_download():
@@ -170,8 +181,12 @@ def download_stream(task_id):
 
         last_index = 0
         while True:
-            with open(status_file, 'r') as f:
-                task = json.load(f)
+            try:
+                with open(status_file, 'r') as f:
+                    task = json.load(f)
+            except (IOError, json.JSONDecodeError):
+                time.sleep(0.5)
+                continue
 
             if len(task['log']) > last_index:
                 for i in range(last_index, len(task['log'])):
