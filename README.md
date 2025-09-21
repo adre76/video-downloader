@@ -50,7 +50,7 @@ Certifique-se de ter as seguintes ferramentas instaladas:
    docker run -it --rm video-downloader:latest <URL_DO_VIDEO>
    ```
 
-### Implantação no Kubernetes
+### Implantação e execução no Kubernetes
 
 1. Certifique-se de que seu cluster Kubernetes esteja configurado e `kubectl` esteja autenticado.
 
@@ -61,9 +61,8 @@ Certifique-se de ter as seguintes ferramentas instaladas:
    ./deploy.sh
    ```
 
-## Contribuição
+4. Configure o arquivo de hosts do seu Sistema Operacional para resolver o endereço downloader.local no endereço do seu host Kubernetes. Abra o navegador e acesse http://downloader.local para visualizar a interface web da aplicação.
 
-Contribuições são bem-vindas! Sinta-se à vontade para abrir issues e pull requests.
 
 ## Licença
 
@@ -72,4 +71,3 @@ Este projeto está licenciado sob a licença MIT. Veja o arquivo `LICENSE` para 
 ## Contato
 
 Para dúvidas ou sugestões, entre em contato com adre76 via GitHub.
-
