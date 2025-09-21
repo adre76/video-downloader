@@ -2,62 +2,151 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Video Downloader</title>
+    <title>Downloader Pro</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⬇️</text></svg>">
     <style>
-        body { font-family: sans-serif; background-color: #f4f4f9; color: #333; margin: 2em; }
-        .container { max-width: 800px; margin: auto; background: #fff; padding: 2em; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h1 { color: #5c67f2; }
-        input[type="url"], textarea { width: 95%; padding: 10px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 4px; }
-        button { background-color: #5c67f2; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; }
-        button:disabled { background-color: #ccc; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        :root {
+            --primary-color: #4f46e5;
+            --primary-hover: #4338ca;
+            --secondary-color: #10b981;
+            --secondary-hover: #059669;
+            --danger-color: #ef4444;
+            --text-color: #374151;
+            --bg-color: #f9fafb;
+            --container-bg: #ffffff;
+            --border-color: #e5e7eb;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 2em;
+        }
+        .container {
+            max-width: 800px;
+            margin: auto;
+            background: var(--container-bg);
+            padding: 2em;
+            border-radius: 12px;
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+            border: 1px solid var(--border-color);
+        }
+        .header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 1em;
+            margin-bottom: 1.5em;
+        }
+        .header svg {
+            width: 48px;
+            height: 48px;
+            color: var(--primary-color);
+        }
+        h1 {
+            color: var(--primary-color);
+            margin: 0;
+            font-size: 1.8rem;
+        }
+        label {
+            font-weight: 600;
+            display: block;
+            margin-bottom: 0.5em;
+        }
+        input[type="url"], input[type="file"] {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 1em;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            box-sizing: border-box;
+        }
+        input[type="file"] {
+            padding: 5px;
+        }
+        button {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background-color 0.2s;
+        }
+        button:hover { background-color: var(--primary-hover); }
+        button:disabled { background-color: #9ca3af; cursor: not-allowed; }
         #results-container { margin-top: 20px; }
-        .error { color: #d9534f; background-color: #f2dede; border: 1px solid #ebccd1; padding: 15px; border-radius: 4px; }
+        .error { color: var(--danger-color); background-color: #fee2e2; border: 1px solid var(--danger-color); padding: 15px; border-radius: 4px; }
         table { width: 100%; border-collapse: collapse; margin-top: 1em; }
-        th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
-        .download-btn { background-color: #28a745; }
-        .mp3-btn { background-color: #ff8c00; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid var(--border-color); }
+        .download-btn { background-color: var(--secondary-color); }
+        .download-btn:hover { background-color: var(--secondary-hover); }
+        .mp3-btn { background-color: #f59e0b; }
+        .mp3-btn:hover { background-color: #d97706; }
+        #log-container {
+            margin-top: 20px;
+            background-color: #1f2937;
+            color: #d1d5db;
+            font-family: monospace;
+            padding: 15px;
+            border-radius: 6px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            height: 300px;
+            overflow-y: scroll;
+            display: none;
+            border: 1px solid #4b5563;
+        }
+        .log-success { color: #34d399; }
+        .log-error { color: #f87171; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Insira o Link do Vídeo</h1>
+        <div class="header">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+            <h1>Downloader Pro</h1>
+        </div>
         <form id="urlForm">
+            <label for="url">Insira o Link do Vídeo</label>
             <input type="url" id="url" name="url" placeholder="https://www.instagram.com/reel/..." required>
-            <br>
-            <label for="cookies">Credenciais (Cookies - Opcional)</label><br>
-            <textarea id="cookies" name="cookies" placeholder="Cole o conteúdo do seu arquivo de cookies (formato Netscape)"></textarea>
-            <br>
+            
+            <label for="cookieFile">Arquivo de Cookies (Opcional)</label>
+            <input type="file" id="cookieFile" name="cookieFile">
+            
             <button type="submit" id="submitBtn">Buscar Opções de Download</button>
         </form>
         <div id="results-container"></div>
+        <div id="log-container"></div>
     </div>
 
     <script>
-        document.getElementById('urlForm').addEventListener('submit', async function(event) {
+        const urlForm = document.getElementById('urlForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const resultsContainer = document.getElementById('results-container');
+        const logContainer = document.getElementById('log-container');
+
+        urlForm.addEventListener('submit', async function(event) {
             event.preventDefault();
             
-            const submitBtn = document.getElementById('submitBtn');
-            const resultsContainer = document.getElementById('results-container');
             const formData = new FormData(event.target);
-
             submitBtn.disabled = true;
             submitBtn.innerText = 'Buscando...';
-            resultsContainer.innerHTML = '<p>Buscando informações, isso pode levar um momento...</p>';
+            resultsContainer.innerHTML = '<p>Analisando URL, por favor aguarde...</p>';
+            logContainer.style.display = 'none';
 
             try {
-                const response = await fetch('/fetch', {
-                    method: 'POST',
-                    body: formData
-                });
-
+                const response = await fetch('/fetch', { method: 'POST', body: formData });
                 if (!response.ok) {
                     const errorData = await response.json();
                     throw new Error(errorData.error || `Erro do servidor: ${response.status}`);
                 }
-
                 const data = await response.json();
                 displayResults(data);
-
             } catch (error) {
                 resultsContainer.innerHTML = `<div class="error"><strong>Falha na busca:</strong> ${error.message}</div>`;
             } finally {
@@ -67,8 +156,6 @@
         });
 
         function displayResults(data) {
-            const resultsContainer = document.getElementById('results-container');
-            
             let tableRows = '';
             data.formats.forEach(format => {
                 tableRows += `
@@ -76,13 +163,7 @@
                         <td>${format.note}</td>
                         <td>.${format.ext}</td>
                         <td>
-                            <form action="/download" method="post" target="_blank">
-                                <input type="hidden" name="url" value="${data.url}">
-                                <input type="hidden" name="format_id" value="${format.format_id}">
-                                <input type="hidden" name="cookies" value="${data.cookies_data}">
-                                <input type="hidden" name="filename" value="${data.filename}.${format.ext}">
-                                <button type="submit" class="download-btn">Download</button>
-                            </form>
+                            <button class="download-btn" onclick="startDownload('${data.url}', '${format.format_id}', '${data.filename}.${format.ext}')">Download</button>
                         </td>
                     </tr>
                 `;
@@ -91,26 +172,66 @@
             resultsContainer.innerHTML = `
                 <h2>Opções para: ${data.title}</h2>
                 <p><strong>Plataforma:</strong> ${data.platform}</p>
-                <form action="/download" method="post" target="_blank" style="margin-bottom: 1em;">
-                     <input type="hidden" name="url" value="${data.url}">
-                     <input type="hidden" name="format_id" value="mp3">
-                     <input type="hidden" name="cookies" value="${data.cookies_data}">
-                     <input type="hidden" name="filename" value="${data.filename}.mp3">
-                     <button type="submit" class="mp3-btn">Baixar apenas Áudio (MP3)</button>
-                </form>
+                <button class="mp3-btn" onclick="startDownload('${data.url}', 'mp3', '${data.filename}.mp3')">Baixar apenas Áudio (MP3)</button>
                 <table>
-                    <thead>
-                        <tr>
-                            <th>Qualidade/Resolução</th>
-                            <th>Extensão</th>
-                            <th>Ação</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${tableRows}
-                    </tbody>
+                    <thead><tr><th>Qualidade/Resolução</th><th>Extensão</th><th>Ação</th></tr></thead>
+                    <tbody>${tableRows}</tbody>
                 </table>
             `;
+        }
+        
+        async function startDownload(url, formatId, filename) {
+            logContainer.style.display = 'block';
+            logContainer.innerHTML = 'Iniciando download...<br>';
+            submitBtn.disabled = true;
+            
+            // Precisamos dos dados do formulário original para o arquivo de cookie
+            const formData = new FormData(urlForm);
+            formData.append('format_id', formatId);
+            formData.append('filename', filename);
+            // O campo 'url' já está no formData, mas podemos garantir que é o correto
+            formData.set('url', url);
+
+            // 1. Iniciar o processo de download no backend
+            const startResponse = await fetch('/start-download', { method: 'POST', body: formData });
+            const startData = await startResponse.json();
+            const taskId = startData.task_id;
+
+            if (!taskId) {
+                logContainer.innerHTML += '<span class="log-error">Falha ao iniciar a tarefa de download.</span>';
+                submitBtn.disabled = false;
+                return;
+            }
+
+            // 2. Conectar ao stream de logs
+            const eventSource = new EventSource(`/download-stream/${taskId}`);
+
+            eventSource.onmessage = function(e) {
+                const data = e.data;
+                if (data.startsWith('DOWNLOAD_URL:')) {
+                    const downloadUrl = data.substring('DOWNLOAD_URL:'.length);
+                    logContainer.innerHTML += `<br><span class="log-success">Download concluído!</span><br><a href="${downloadUrl}" download>Clique aqui para baixar o arquivo.</a>`;
+                    window.location.href = downloadUrl; // Inicia o download automaticamente
+                    eventSource.close();
+                    submitBtn.disabled = false;
+                } else if (data === 'PROCESSO_CONCLUIDO') {
+                    // Ignora, pois já tratamos o link de download
+                } else if (data.startsWith('ERRO:')) {
+                    logContainer.innerHTML += `<span class="log-error">${data}</span><br>`;
+                    eventSource.close();
+                    submitBtn.disabled = false;
+                }
+                else {
+                    logContainer.innerHTML += data + '<br>';
+                    logContainer.scrollTop = logContainer.scrollHeight;
+                }
+            };
+
+            eventSource.onerror = function(err) {
+                logContainer.innerHTML += '<span class="log-error">--- Erro na conexão de log com o servidor. ---</span>';
+                eventSource.close();
+                submitBtn.disabled = false;
+            };
         }
     </script>
 </body>
