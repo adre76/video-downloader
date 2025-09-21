@@ -16,7 +16,6 @@ app = Flask(__name__)
 app.config['DOWNLOAD_FOLDER'] = DOWNLOAD_FOLDER
 app.secret_key = os.urandom(24)
 
-# Dicionário em memória para armazenar o estado das tarefas
 DOWNLOAD_TASKS = {}
 
 def sanitize_filename(title):
@@ -61,17 +60,15 @@ def fetch_formats():
             return jsonify({'error': error_message}), 500
 
         formats = []
-        unique_formats = set() # Usado para remover duplicatas
+        unique_formats = set()
         for f in info.get('formats', []):
             if f.get('url') and (f.get('vcodec') != 'none' or f.get('acodec') != 'none'):
                 format_note = f.get('format_note', f.get('resolution', 'Áudio'))
                 if f.get('vcodec') == 'none':
                     format_note = f"Áudio Apenas ({f.get('acodec')})"
                 
-                # Chave única para identificar formatos aparentemente iguais
                 unique_key = f"{format_note}-{f.get('ext')}"
-                if unique_key in unique_formats:
-                    continue # Pula se já adicionamos um formato com esta aparência
+                if unique_key in unique_formats: continue
                 
                 unique_formats.add(unique_key)
                 formats.append({'format_id': f.get('format_id'), 'ext': f.get('ext'), 'note': format_note})
@@ -86,7 +83,6 @@ def fetch_formats():
         print(f"--- ERRO DETALHADO EM /FETCH ---\n{tb_str}------------------------------------")
         return jsonify({'error': 'Ocorreu um erro interno no servidor.'}), 500
 
-# --- Lógica de Download em Background ---
 def download_worker(task_id, ydl_opts, video_url):
     def log_hook(d):
         if d['status'] == 'downloading':
@@ -97,9 +93,8 @@ def download_worker(task_id, ydl_opts, video_url):
         elif d['status'] == 'error':
              DOWNLOAD_TASKS[task_id]['log'].append(f"ERRO: {d.get('msg', 'Falha no download')}")
 
-
     ydl_opts['progress_hooks'] = [log_hook]
-    ydl_opts['quiet'] = True # Silencia a saída padrão para controlarmos pelo hook
+    ydl_opts['quiet'] = True
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -154,12 +149,23 @@ def start_download():
 @app.route('/download-stream/<task_id>')
 def download_stream(task_id):
     def generate():
+        # --- MUDANÇA PRINCIPAL AQUI ---
+        # Lógica de espera para evitar a condição de corrida
+        task = DOWNLOAD_TASKS.get(task_id)
+        retries = 5
+        while not task and retries > 0:
+            time.sleep(0.2) # Espera 200ms
+            task = DOWNLOAD_TASKS.get(task_id)
+            retries -= 1
+
+        if not task:
+            yield "data: ERRO: Tarefa não encontrada ou expirou.\n\n"
+            return # Sai da função geradora
+        # --- FIM DA MUDANÇA ---
+
         last_index = 0
         while True:
-            if task_id not in DOWNLOAD_TASKS:
-                yield "data: ERRO: Tarefa não encontrada.\n\n"
-                break
-            task = DOWNLOAD_TASKS[task_id]
+            task = DOWNLOAD_TASKS[task_id] # Re-obtém o estado atual da tarefa
             if len(task['log']) > last_index:
                 for i in range(last_index, len(task['log'])):
                     yield f"data: {task['log'][i]}\n\n"
